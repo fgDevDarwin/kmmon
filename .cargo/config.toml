@@ -1,0 +1,4 @@
+# NIX_LDFLAGS injected by direnv can contain paths with spaces which break
+# the linker. Clear it and rely on the Nix store paths already in PATH.
+[env]
+NIX_LDFLAGS = { value = "", force = true }

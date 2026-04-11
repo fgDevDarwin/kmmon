@@ -1,0 +1,11 @@
+target/
+
+# Nix
+result
+result-*
+
+# Claude Code
+.claude/
+
+# Misc
+.direnv

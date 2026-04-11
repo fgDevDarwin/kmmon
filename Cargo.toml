@@ -1,0 +1,22 @@
+[package]
+name = "kmmon"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+
+[dependencies]
+evdev = { version = "0.12", features = ["tokio"] }
+foxglove = "0.21"
+tokio = { version = "1", features = ["rt", "macros", "sync", "time", "signal", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+object_store = { version = "0.11", features = ["aws"] }
+nix = { version = "0.31.2", features = ["hostname"] }
+
+[dev-dependencies]
+tempfile = "3"
+filetime = "0.2"
+mcap = "0.24"
