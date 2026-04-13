@@ -59,6 +59,38 @@ Emitted per-event (not throttled).
 
 JSON Schema encoding: `jsonschema`
 
+### `/mouse/activity`
+
+Rolling-window aggregate designed to be directly comparable to
+`/keyboard/activity` — both report a scalar "how busy is the user"
+signal at 1 Hz.
+
+Emitted at **1 Hz**. Suppressed while continuously idle; re-emitted on
+state transitions (idle → active, active → idle) so the timeline
+faithfully shows periods of no movement.
+
+```json
+{
+  "pixels_per_second": 412.3,
+  "active": true
+}
+```
+
+| Field                | Type  | Description                                    |
+|----------------------|-------|------------------------------------------------|
+| `pixels_per_second`  | `f64` | Cursor distance travelled in the last 60 s, divided by 60. Euclidean distance (`sqrt(dx² + dy²)`) summed across every relative-move event in the window. |
+| `active`             | `bool`| `true` while `pixels_per_second > 0`, i.e. there was at least one move event in the window. |
+
+Window: **60 seconds**, matching `/keyboard/activity` so both signals
+respond on the same timescale.
+
+Only relative moves (`EV_REL`) contribute. Absolute pointer devices
+(touchpads, tablets) currently do not drive this metric; adding them
+would require computing step-wise deltas from consecutive `ABS_X`/
+`ABS_Y` values and is left for a future change.
+
+JSON Schema encoding: `jsonschema`
+
 ## Privacy
 
 Mouse position and scroll data are geometric coordinates only — no application context, window titles, or UI element information is captured or logged.

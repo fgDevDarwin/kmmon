@@ -45,6 +45,12 @@ pub struct KeyboardActivity {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MouseActivity {
+    pub pixels_per_second: f64,
+    pub active: bool,
+}
+
 // ---------------------------------------------------------------------------
 // KeyboardProcessor — privacy-first rolling-window WPM
 // ---------------------------------------------------------------------------
@@ -103,6 +109,71 @@ impl Default for KeyboardProcessor {
 }
 
 // ---------------------------------------------------------------------------
+// MouseActivityProcessor — rolling-window cursor speed
+// ---------------------------------------------------------------------------
+
+/// Tracks cursor distance travelled within a rolling time window, producing
+/// a `pixels_per_second` metric that is directly comparable to
+/// `KeyboardActivity::approx_wpm` (both are scalar "how busy is the user"
+/// signals at the same timescale).
+pub struct MouseActivityProcessor {
+    moves: VecDeque<(Instant, f64)>,
+    window: Duration,
+}
+
+impl MouseActivityProcessor {
+    /// Creates a processor with the standard 60-second rolling window.
+    pub fn new() -> Self {
+        Self::with_window(Duration::from_secs(60))
+    }
+
+    /// Creates a processor with a custom window (useful for tests).
+    pub fn with_window(window: Duration) -> Self {
+        Self {
+            moves: VecDeque::new(),
+            window,
+        }
+    }
+
+    /// Records a relative mouse move. Zero-magnitude moves are dropped so
+    /// they do not falsely mark the user as active.
+    pub fn record_move(&mut self, dx: i32, dy: i32) {
+        if dx == 0 && dy == 0 {
+            return;
+        }
+        let dist = ((dx as f64).powi(2) + (dy as f64).powi(2)).sqrt();
+        let now = Instant::now();
+        self.moves.push_back((now, dist));
+        self.prune(now);
+    }
+
+    /// Returns the current activity snapshot and prunes expired moves.
+    pub fn activity(&mut self) -> MouseActivity {
+        let now = Instant::now();
+        self.prune(now);
+        let total: f64 = self.moves.iter().map(|(_, d)| d).sum();
+        let pixels_per_second = total / self.window.as_secs_f64();
+        MouseActivity {
+            pixels_per_second,
+            active: !self.moves.is_empty(),
+        }
+    }
+
+    fn prune(&mut self, now: Instant) {
+        let cutoff = now - self.window;
+        while self.moves.front().is_some_and(|&(t, _)| t < cutoff) {
+            self.moves.pop_front();
+        }
+    }
+}
+
+impl Default for MouseActivityProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -152,6 +223,52 @@ mod tests {
         thread::sleep(Duration::from_millis(60));
         let a = p.activity();
         assert_eq!(a.keystrokes_per_minute, 0);
+        assert!(!a.active);
+    }
+
+    // ---------- MouseActivityProcessor ----------
+
+    #[test]
+    fn mouse_empty_window_is_idle() {
+        let mut p = MouseActivityProcessor::new();
+        let a = p.activity();
+        assert_eq!(a.pixels_per_second, 0.0);
+        assert!(!a.active);
+    }
+
+    #[test]
+    fn mouse_sums_euclidean_distance() {
+        // 60-second window, 3 moves: (3,4)→5, (6,8)→10, (0,1)→1. Total = 16 px / 60 s.
+        let mut p = MouseActivityProcessor::with_window(Duration::from_secs(60));
+        p.record_move(3, 4);
+        p.record_move(6, 8);
+        p.record_move(0, 1);
+        let a = p.activity();
+        assert!(
+            (a.pixels_per_second - 16.0 / 60.0).abs() < 1e-9,
+            "got {}",
+            a.pixels_per_second,
+        );
+        assert!(a.active);
+    }
+
+    #[test]
+    fn mouse_expired_moves_are_pruned() {
+        let mut p = MouseActivityProcessor::with_window(Duration::from_millis(30));
+        p.record_move(100, 100);
+        thread::sleep(Duration::from_millis(60));
+        let a = p.activity();
+        assert_eq!(a.pixels_per_second, 0.0);
+        assert!(!a.active);
+    }
+
+    #[test]
+    fn mouse_zero_delta_does_not_count_as_active() {
+        // A (0,0) delta somehow reaching the processor shouldn't falsely mark active.
+        let mut p = MouseActivityProcessor::new();
+        p.record_move(0, 0);
+        let a = p.activity();
+        assert_eq!(a.pixels_per_second, 0.0);
         assert!(!a.active);
     }
 
