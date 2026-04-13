@@ -17,16 +17,23 @@ flow).
 | Key          | Source                          | Required | Default     |
 |--------------|---------------------------------|----------|-------------|
 | `projectId`  | `KMMON_FOXGLOVE_PROJECT_ID`     | Yes      | —           |
-| `deviceId`   | `KMMON_FOXGLOVE_DEVICE_ID`      | No       | hostname    |
+| `deviceId`   | `KMMON_FOXGLOVE_DEVICE_ID`      | No       | *(omitted)* |
 | `deviceName` | `KMMON_FOXGLOVE_DEVICE_NAME`    | No       | hostname    |
 
 `projectId` must be set for the indexer to assign the recording to the
 correct project. Without it the platform falls back to a server-side
 resolver which may create a default project.
 
-`deviceId` and `deviceName` default to the machine hostname. Override them
-when the same host records under multiple identities or when the hostname
-is not human-friendly.
+**`deviceId` vs `deviceName`**: the data platform treats `deviceId` as a
+foreign-key reference to an already-registered device. Setting it to a
+value that does not exist produces a 404 "Device not found" at index
+time. `deviceName` is free-form — if no device with that name exists,
+one is auto-created server-side. The data platform prefers `deviceId`
+when both are present.
+
+kmmon therefore **omits `deviceId` by default** and defaults `deviceName`
+to the machine hostname. Set `KMMON_FOXGLOVE_DEVICE_ID` only when you
+have pre-registered the device and have its real ID.
 
 ## Timing
 

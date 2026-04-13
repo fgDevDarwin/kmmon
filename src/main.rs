@@ -207,22 +207,41 @@ fn publish(channel: &foxglove::RawChannel, msg: &impl serde::Serialize) {
 /// Returns an empty map when `KMMON_FOXGLOVE_PROJECT_ID` is unset (no record
 /// will be written).
 fn build_foxglove_metadata() -> BTreeMap<String, String> {
-    let project_id = match std::env::var("KMMON_FOXGLOVE_PROJECT_ID") {
-        Ok(id) => id,
-        Err(_) => return BTreeMap::new(),
+    let project_id = std::env::var("KMMON_FOXGLOVE_PROJECT_ID").ok();
+    let device_id = std::env::var("KMMON_FOXGLOVE_DEVICE_ID").ok();
+    let device_name = std::env::var("KMMON_FOXGLOVE_DEVICE_NAME").ok();
+    foxglove_metadata(
+        project_id.as_deref(),
+        device_id.as_deref(),
+        device_name.as_deref(),
+        &gethostname(),
+    )
+}
+
+/// Pure helper: builds the `"foxglove"` metadata map from explicit inputs.
+///
+/// `deviceId` is omitted entirely when not explicitly provided — it's a
+/// foreign-key reference and an unknown value causes the indexer to fail
+/// with "Device not found". `deviceName` is free-form and auto-creates a
+/// device server-side, so it defaults to the hostname.
+fn foxglove_metadata(
+    project_id: Option<&str>,
+    device_id: Option<&str>,
+    device_name: Option<&str>,
+    hostname: &str,
+) -> BTreeMap<String, String> {
+    let Some(project_id) = project_id else {
+        return BTreeMap::new();
     };
 
-    let hostname = gethostname();
-
     let mut m = BTreeMap::new();
-    m.insert("projectId".into(), project_id);
-    m.insert(
-        "deviceId".into(),
-        std::env::var("KMMON_FOXGLOVE_DEVICE_ID").unwrap_or_else(|_| hostname.clone()),
-    );
+    m.insert("projectId".into(), project_id.into());
+    if let Some(id) = device_id {
+        m.insert("deviceId".into(), id.into());
+    }
     m.insert(
         "deviceName".into(),
-        std::env::var("KMMON_FOXGLOVE_DEVICE_NAME").unwrap_or(hostname),
+        device_name.unwrap_or(hostname).into(),
     );
     m
 }
@@ -232,4 +251,42 @@ fn gethostname() -> String {
         .ok()
         .and_then(|h| h.into_string().ok())
         .unwrap_or_else(|| "unknown".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_project_id_produces_empty_map() {
+        let m = foxglove_metadata(None, Some("dev_1"), Some("laptop"), "host");
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn device_id_omitted_when_not_explicitly_set() {
+        let m = foxglove_metadata(Some("prj_1"), None, None, "myhost");
+        assert_eq!(m.get("projectId").map(String::as_str), Some("prj_1"));
+        assert!(
+            !m.contains_key("deviceId"),
+            "deviceId must not default to hostname: {m:?}",
+        );
+        assert_eq!(m.get("deviceName").map(String::as_str), Some("myhost"));
+    }
+
+    #[test]
+    fn device_id_included_when_explicitly_set() {
+        let m = foxglove_metadata(Some("prj_1"), Some("dev_abc"), None, "myhost");
+        assert_eq!(m.get("deviceId").map(String::as_str), Some("dev_abc"));
+        assert_eq!(m.get("deviceName").map(String::as_str), Some("myhost"));
+    }
+
+    #[test]
+    fn explicit_device_name_overrides_hostname() {
+        let m = foxglove_metadata(Some("prj_1"), None, Some("Darwin's desktop"), "host");
+        assert_eq!(
+            m.get("deviceName").map(String::as_str),
+            Some("Darwin's desktop"),
+        );
+    }
 }

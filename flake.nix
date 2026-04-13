@@ -124,10 +124,12 @@
             deviceId = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
-              example = "darwin-workstation";
+              example = "dev_abc123";
               description = ''
-                Device identifier embedded in MCAP metadata.
-                Defaults to the machine hostname when null.
+                Pre-registered Foxglove device ID. When set, takes precedence
+                over deviceName during indexing. Leave null unless you have
+                registered the device with the data platform and have its ID —
+                unknown IDs cause the indexer to fail with "Device not found".
               '';
             };
 
