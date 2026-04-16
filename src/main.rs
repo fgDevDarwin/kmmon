@@ -15,7 +15,7 @@ use tokio::time;
 use tracing::info;
 
 use mcap_writer::RollingWriter;
-use processor::{KeyboardProcessor, MousePosition, MouseScroll, RawEvent};
+use processor::{KeyboardProcessor, MouseActivityProcessor, MousePosition, MouseScroll, RawEvent};
 use uploader::S3Uploader;
 use ws_server::Channels;
 
@@ -137,8 +137,10 @@ async fn run_event_loop(mut rx: mpsc::Receiver<RawEvent>, channels: Arc<Channels
     let mut mouse_deadline: Option<time::Instant> = None;
 
     let kb_proc = Arc::new(Mutex::new(KeyboardProcessor::new()));
-    let mut kb_timer = time::interval(Duration::from_secs(1));
+    let mouse_proc = Arc::new(Mutex::new(MouseActivityProcessor::new()));
+    let mut activity_timer = time::interval(Duration::from_secs(1));
     let mut kb_was_active = false;
+    let mut mouse_was_active = false;
 
     loop {
         tokio::select! {
@@ -147,6 +149,7 @@ async fn run_event_loop(mut rx: mpsc::Receiver<RawEvent>, channels: Arc<Channels
                     RawEvent::MouseRelMove { dx, dy } => {
                         mouse_x += dx;
                         mouse_y += dy;
+                        mouse_proc.lock().unwrap().record_move(dx, dy);
                         mark_mouse_dirty(&mut mouse_deadline);
                     }
                     RawEvent::MouseAbsX(x) => {
@@ -178,13 +181,19 @@ async fn run_event_loop(mut rx: mpsc::Receiver<RawEvent>, channels: Arc<Channels
                 mouse_deadline = None;
             }
 
-            _ = kb_timer.tick() => {
-                let activity = kb_proc.lock().unwrap().activity();
-                // Silent while continuously inactive; emit on state change.
-                if activity.active || kb_was_active {
-                    publish(&channels.keyboard_activity, &activity);
+            _ = activity_timer.tick() => {
+                // Silent while continuously inactive; emit on state transitions.
+                let kb = kb_proc.lock().unwrap().activity();
+                if kb.active || kb_was_active {
+                    publish(&channels.keyboard_activity, &kb);
                 }
-                kb_was_active = activity.active;
+                kb_was_active = kb.active;
+
+                let mouse = mouse_proc.lock().unwrap().activity();
+                if mouse.active || mouse_was_active {
+                    publish(&channels.mouse_activity, &mouse);
+                }
+                mouse_was_active = mouse.active;
             }
         }
     }
