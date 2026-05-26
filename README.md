@@ -123,6 +123,12 @@ characters) used by typing-speed tests such as monkeytype and
 10fastfingers. Only key-down events are counted; repeats and releases
 are ignored.
 
+## Specs
+
+- [HCI training data](docs/hci-training-data.md) — roadmap for using kmmon,
+  Sway telemetry, and Foxglove data-platform features to curate training data
+  for software-engineering desktop agents.
+
 ## License
 
 MIT
