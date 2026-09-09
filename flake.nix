@@ -13,7 +13,7 @@
     nixpkgs,
     fenix,
   }:
-    # System-specific outputs (packages, devShells)
+  # System-specific outputs (packages, devShells)
     flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = (import nixpkgs) {
@@ -21,7 +21,18 @@
           overlays = [fenix.overlays.default];
         };
 
-        naersk' = pkgs.callPackage naersk {};
+        naersk' = pkgs.callPackage naersk {
+          fetchurl = args:
+            pkgs.fetchurl (args
+              // {
+                curlOptsList =
+                  (args.curlOptsList or [])
+                  ++ [
+                    "--user-agent"
+                    "cargo/${pkgs.cargo.version}"
+                  ];
+              });
+        };
       in {
         packages.default = naersk'.buildPackage {
           src = ./.;
